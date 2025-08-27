@@ -13,17 +13,30 @@ M.last_action = nil
 
 local function get_visual_selection()
   local bufnr = vim.api.nvim_get_current_buf()
+
+  local vis_mode = vim.fn.mode()
+
   local start_pos = vim.fn.getpos("'<")
-  local end_pos = vim.fn.getpos("'>")
+  local end_pos   = vim.fn.getpos("'>")
+
   local start_row, start_col = start_pos[2]-1, start_pos[3]-1
-  local end_row, end_col = end_pos[2]-1, end_pos[3]
+  local end_row, end_col     = end_pos[2]-1, end_pos[3]-1
 
   if end_row < start_row or (end_row == start_row and end_col < start_col) then
     start_row, end_row = end_row, start_row
     start_col, end_col = end_col, start_col
   end
 
-  end_col = end_col + 1
+  if vis_mode == "v" then
+    end_col = end_col + 1
+  elseif vis_mode == "V" then
+    start_col = 0
+    end_row   = end_row + 1
+    end_col   = 0
+  else
+    vim.notify("Blockwise visual mode not supported", vim.log.levels.WARN)
+    return nil, nil
+  end
 
   local lines = vim.api.nvim_buf_get_text(bufnr, start_row, start_col, end_row, end_col, {})
   return table.concat(lines, "\n"), {start_row, start_col, end_row, end_col}
