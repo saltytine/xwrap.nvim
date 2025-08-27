@@ -1,72 +1,57 @@
 local M = {}
 
-local pairs = {
-  ['"'] = '"',
-  ["'"] = "'",
-  ["("] = ")",
-  ["["] = "]",
-  ["{"] = "}",
-  ["<"] = ">"
+local lua_pairs = pairs
+
+local wrappers = {
+  ['"']  = { '"', '"' },
+  ["'"]  = { "'", "'" },
+  ["("]  = { "(", ")" },
+  ["["]  = { "[", "]" },
+  ["{"]  = { "{", "}" },
+  ["<"]  = { "<", ">" },
 }
 
-function M.wrap(type, char)
-  local opener = char
-  local closer = pairs[char]
-  if not closer then return end
-
-  local sel = ""
-  if type == "v" then -- characterwise visual
-    vim.cmd('normal! `[v`]y')
-    sel = vim.fn.getreg('"')
-    if sel:sub(1,1) == opener and sel:sub(-1) == closer then
-      sel = sel:sub(2, -2) -- unwrap
-    else
-      sel = opener .. sel .. closer
-    end
-    vim.fn.setreg('"', sel)
-    vim.cmd('normal! gv"0p')
-  elseif type == "V" then -- linewise visual
-    local start_line = vim.fn.line("'<")
-    local end_line = vim.fn.line("'>")
-    for l = start_line, end_line do
-      local line = vim.fn.getline(l)
-      if line:sub(1,1) == opener and line:sub(-1) == closer then
-        vim.fn.setline(l, line:sub(2, -2))
-      else
-        vim.fn.setline(l, opener .. line .. closer)
-      end
-    end
-  elseif type == "\022" then -- blockwise visual (<C-v>)
-    local start_line = vim.fn.line("'<")
-    local end_line = vim.fn.line("'>")
-    for l = start_line, end_line do
-      local line = vim.fn.getline(l)
-      local s = vim.fn.col("'<")
-      local e = vim.fn.col("'>")
-      local chunk = line:sub(s, e)
-      if chunk:sub(1,1) == opener and chunk:sub(-1) == closer then
-        chunk = chunk:sub(2, -2)
-      else
-        chunk = opener .. chunk .. closer
-      end
-      vim.fn.setline(l, line:sub(1, s-1) .. chunk .. line:sub(e+1))
-    end
-  end
+local function is_wrapped(str, open, close)
+  return vim.startswith(str, open) and vim.endswith(str, close)
 end
 
-local function make_mapping(char)
+local function wrap_selection(open, close, mode)
+  vim.cmd('normal! gv"zy')
+  local text = vim.fn.getreg('z')
+
+  local new
+  if is_wrapped(text, open, close) then
+    new = text:sub(#open + 1, #text - #close)
+  else
+    if mode == 'V' then -- visual line
+      new = open .. text:gsub('\n$', '') .. close .. '\n'
+    elseif mode == '\22' then -- visual block
+      local lines = vim.split(text, '\n')
+      for i, l in ipairs(lines) do
+        lines[i] = open .. l .. close
+      end
+      new = table.concat(lines, '\n')
+    else
+      new = open .. text .. close
+    end
+  end
+
+  vim.fn.setreg('z', new)
+  vim.cmd('normal! gv"zp') -- replace selection
+end
+
+local function make_repeatable(fn)
   return function()
-    vim.go.operatorfunc = "v:lua.require'wrap'.wrap"
-    vim.fn.feedkeys("g@" .. char, "n") -- makes it repeatable
+    fn()
+    vim.fn['repeat#set']("gv", -1) -- make `.` reapply
   end
 end
 
 function M.setup()
-  for c, _ in pairs(pairs) do
-    vim.keymap.set("v", c, function()
+  for key, pair in lua_pairs(wrappers) do
+    vim.keymap.set('x', key, function()
       local mode = vim.fn.mode()
-      M.wrap(mode, c)
-      vim.fn['repeat#set'](string.format(":'<,'>lua require'wrap'.wrap('%s','%s')<CR>", mode, c))
+      wrap_selection(pair[1], pair[2], mode)
     end, { noremap = true, silent = true })
   end
 end
