@@ -1,47 +1,38 @@
+-- xwrap.lua
 local M = {}
 
-local function wrap_range(open, close)
-  local start_pos = vim.fn.getpos("'<")
-  local end_pos   = vim.fn.getpos("'>")
+local function toggle_wrap(open, close)
+  local s_start = vim.fn.getpos("'<")
+  local s_end   = vim.fn.getpos("'>")
 
-  local s_row, s_col = start_pos[2]-1, start_pos[3]-1
-  local e_row, e_col = end_pos[2]-1, end_pos[3]
+  local lines = vim.fn.getline(s_start[2], s_end[2])
+  if #lines == 0 then return end
 
-  local bufnr = vim.api.nvim_get_current_buf()
-  local text = vim.api.nvim_buf_get_text(bufnr, s_row, s_col, e_row, e_col, {})
-  if #text == 0 then return end
-
-  local flat = table.concat(text, "\n")
-
-  -- unwrap if already wrapped
-  if vim.startswith(flat, open) and vim.endswith(flat, close) then
-    flat = flat:sub(#open+1, #flat-#close)
+  if #lines == 1 then
+    local text = lines[1]:sub(s_start[3], s_end[3])
+    if text:sub(1,1) == open and text:sub(-1) == close then
+      text = text:sub(2, -2)
+    else
+      text = open .. text .. close
+    end
+    local line = lines[1]
+    lines[1] = line:sub(1, s_start[3]-1) .. text .. line:sub(s_end[3]+1)
   else
-    flat = open .. flat .. close
+    lines[1] = lines[1]:sub(1, s_start[3]-1) .. open .. lines[1]:sub(s_start[3])
+    lines[#lines] = lines[#lines]:sub(1, s_end[3]) .. close .. lines[#lines]:sub(s_end[3]+1)
   end
 
-  local new_lines = vim.split(flat, "\n", { plain = true })
-  vim.api.nvim_buf_set_text(bufnr, s_row, s_col, e_row, e_col, new_lines)
+  vim.fn.setline(s_start[2], lines)
 end
 
-local pairs_map = {
-  ["'"] = { "'", "'" },
-  ['"'] = { '"', '"' },
-  ["("] = { "(", ")" },
-  ["["] = { "[", "]" },
-  ["{"] = { "{", "}" },
-  ["<"] = { "<", ">" },
-  ["*"] = { "*", "*" },
-  ["_"] = { "_", "_" },
-  ["`"] = { "`", "`" },
-}
-
 function M.setup()
-  for key, pair in pairs(pairs_map) do
-    vim.keymap.set("x", key, function()
-      wrap_range(pair[1], pair[2])
-    end, { silent = true })
-  end
+  local map = vim.keymap.set
+  map("v", '"',  function() toggle_wrap('"', '"') end, { desc = "Toggle wrap with \"" })
+  map("v", "'",  function() toggle_wrap("'", "'") end, { desc = "Toggle wrap with '" })
+  map("v", "(",  function() toggle_wrap("(", ")") end, { desc = "Toggle wrap with ()" })
+  map("v", "[",  function() toggle_wrap("[", "]") end, { desc = "Toggle wrap with []" })
+  map("v", "{",  function() toggle_wrap("{", "}") end, { desc = "Toggle wrap with {}" })
+  map("v", "<",  function() toggle_wrap("<", ">") end, { desc = "Toggle wrap with <>" })
 end
 
 return M
