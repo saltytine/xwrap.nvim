@@ -12,17 +12,19 @@ M.pairs = {
 M.last_action = nil
 
 local function get_visual_selection()
-  local _, ls, cs = unpack(vim.fn.getpos("'<"))
-  local _, le, ce = unpack(vim.fn.getpos("'>"))
-  if ls ~= le then return nil end
+  local bufnr = vim.api.nvim_get_current_buf()
+  local start_pos = vim.fn.getpos("'<")
+  local end_pos = vim.fn.getpos("'>")
+  local start_row, start_col = start_pos[2]-1, start_pos[3]-1
+  local end_row, end_col = end_pos[2]-1, end_pos[3]
 
-  local line = vim.fn.getline(ls)
-  return line:sub(cs, ce)
+  local lines = vim.api.nvim_buf_get_text(bufnr, start_row, start_col, end_row, end_col, {})
+  return table.concat(lines, "\n"), {start_row, start_col, end_row, end_col}
 end
 
-local function set_visual_selection(replacement)
-  vim.cmd('normal! gv"_c')
-  vim.api.nvim_paste(replacement, true, -1)
+local function set_visual_selection(new_text, range)
+  local bufnr = vim.api.nvim_get_current_buf()
+  vim.api.nvim_buf_set_text(bufnr, range[1], range[2], range[3], range[4], vim.split(new_text, "\n"))
 end
 
 local function toggle_wrap(key)
@@ -30,18 +32,19 @@ local function toggle_wrap(key)
   if not pair then return end
   local left, right = pair[1], pair[2]
 
-  local text = get_visual_selection()
+  local text, range = get_visual_selection()
   if not text then return end
 
-  if text:sub(1, #left) == left and text:sub(-#right) == right then
-    local unwrapped = text:sub(#left+1, -#right-1)
-    set_visual_selection(unwrapped)
+  local new_text
+  if vim.startswith(text, left) and vim.endswith(text, right) then
+    new_text = text:sub(#left+1, -#right-1)
     M.last_action = { action="unwrap", key=key }
   else
-    local wrapped = left .. text .. right
-    set_visual_selection(wrapped)
+    new_text = left .. text .. right
     M.last_action = { action="wrap", key=key }
   end
+
+  set_visual_selection(new_text, range)
 end
 
 function M.setup(opts)
@@ -61,7 +64,7 @@ function M.setup(opts)
       return vim.cmd("normal! .")
     end
     local la = M.last_action
-    if la.action == "wrap" or la.action == "unwrap" then
+    if la.action then
       vim.cmd("normal! gv")
       toggle_wrap(la.key)
     else
