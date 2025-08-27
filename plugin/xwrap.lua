@@ -23,6 +23,8 @@ local function get_visual_selection()
     start_col, end_col = end_col, start_col
   end
 
+  end_col = end_col + 1
+
   local lines = vim.api.nvim_buf_get_text(bufnr, start_row, start_col, end_row, end_col, {})
   return table.concat(lines, "\n"), {start_row, start_col, end_row, end_col}
 end
